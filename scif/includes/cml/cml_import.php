@@ -18,6 +18,7 @@ require CML_INCLUDE_FOLDER.'cml_import_offers.php';
 }
 
 // ================= Заказы =======================================
+$cml_imported_docs=array();
 if (!empty($obj->Документ)) {
 require CML_INCLUDE_FOLDER.'cml_import_orders.php';
 }

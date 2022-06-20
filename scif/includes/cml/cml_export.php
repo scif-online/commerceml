@@ -5,8 +5,12 @@ defined('CML_INCLUDE_FOLDER') or die('Access denied');
 $filename='';
 $xml='';
 $only_changes=((!empty($params['only_changes']) AND !empty($time_last_cml['export']))?$time_last_cml['export']:false);
-cml_fill_id('spr_noms,spr_noms_gr,spr_values,spr_prices'); // заполним cml_id в справочниках
 if (!empty($params['import'])) { // Классификатор
+ // заполним cml_id в справочниках. Цены не заполняем, нужно вручную проставить cml_id выгружаемым типам цен, взяв их ID из выгрузки магазина
+ if (!empty($cml['export_new_spr'])) {
+ cml_fill_id('spr_noms,spr_noms_gr,spr_values');
+ }
+
 $filename='import';
 $xml.='
 <Классификатор СодержитТолькоИзменения="'.($only_changes?'true':'false').'">
@@ -60,6 +64,7 @@ $xml.='
  $res=$db->sql_query('SELECT property, name, cml_id
  FROM '.SCIF_PREFIX.'spr_values
  WHERE property IN ('.implode(',',array_keys($cml['properties'])).')
+ AND cml_id IS NOT NULL
  ORDER BY property');
   if ($db->sql_num_rows($res)) {
   $xml.='
@@ -110,7 +115,7 @@ $xml.='
   $sql.=' FROM '.SCIF_PREFIX.'spr_noms n
   LEFT JOIN '.SCIF_PREFIX.'spr_noms_gr g ON n.parent=g.id'
   .$sql_join
-  .' WHERE 1'
+  .' WHERE n.cml_id IS NOT NULL'
   .(!empty($cml['where_spr_noms'])?' AND '.$cml['where_spr_noms']:'')
   .($only_changes?' AND (n.date_insert>='.$only_changes.' OR n.date_update>='.$only_changes.')':'');
   $res=$db->sql_query($sql);
@@ -191,50 +196,26 @@ $xml.='
    </Налог>
   </ТипЦены>';
   $prices[$row['id']]['currency_name']=$cml['currencies'][$row['currency']]['name'];
+  $prices[$row['id']]['cml_id']=$row['cml_id'];
   }
  $xml.='
  </ТипыЦен>
  <Предложения>';
-  // склады остатков
-  if (!isset($cml['offer_stores'])) {
-  $cml['offer_stores']=array_keys($stores);
-  }
- $sql_stock='(n.store'.implode('+n.store',$cml['offer_stores']).')';
- $sql='SELECT n.name, n.unit, n.cml_id, n.price'.implode(',n.price',$cml['offer_prices'])
- .', '.$sql_stock.' AS stock
+ $sql='SELECT n.name, n.unit, n.cml_id, n.price'.implode(',n.price',$cml['offer_prices']).', '.$cml['sql_store'].' AS stock
  FROM '.SCIF_PREFIX.'spr_noms n
- WHERE 1'.(!empty($cml['where_spr_noms'])?' AND '.$cml['where_spr_noms']:'')
- .($only_changes?' AND (n.date_update>='.$only_changes.' OR '.$sql_stock.'!=n.cml_stock)':'');
+ WHERE n.cml_id IS NOT NULL'
+ .(!empty($cml['where_spr_noms'])?' AND '.$cml['where_spr_noms']:'')
+ .($only_changes?' AND (n.date_update>='.$only_changes.' OR '.$cml['sql_store'].'!=n.cml_stock)':'');
  $res=$db->sql_query($sql);
   while ($row=$db->sql_fetch_assoc($res)) {
-  $xml.='
-  <Предложение>
-   <Ид>'.product_cml_id($row['cml_id']).'</Ид>
-   <Наименование>'.$row['name'].'</Наименование>
-   <БазоваяЕдиница Код="796" НаименованиеПолное="Штука" МеждународноеСокращение="PCE">шт</БазоваяЕдиница>
-   <Цены>';
-    foreach ($cml['offer_prices'] AS $key) {
-    $xml.='
-    <Цена>
-    <Представление>'.$row['price'.$key].' '.$prices[$key]['currency_name'].' за '.$row['unit'].'</Представление>
-     <ИдТипаЦены>'.$key.'</ИдТипаЦены>
-     <ЦенаЗаЕдиницу>'.$row['price'.$key].'</ЦенаЗаЕдиницу>
-     <Валюта>'.$prices[$key]['currency_name'].'</Валюта>
-     <Единица>'.$row['unit'].'</Единица>
-     <Коэффициент>1</Коэффициент>
-    </Цена>';
-    }
-   $xml.='
-   </Цены>
-   <Количество>'.(float)$row['stock'].'</Количество>
-  </Предложение>';
+  $xml.=cml_offer();
   }
  $xml.='
  </Предложения>
 </ПакетПредложений>';
 // сохраним выгруженные остатки, чтобы при следующей выгрузке иметь возможность отобрать только изменившиеся
-$db->sql_query('UPDATE '.SCIF_PREFIX.'spr_noms n SET n.cml_stock='.$sql_stock
-.(!empty($cml['where_spr_noms'])?' WHERE '.$cml['where_spr_noms']:''));
+$db->sql_query('UPDATE '.SCIF_PREFIX.'spr_noms n SET n.cml_stock='.$cml['sql_store'].' WHERE n.cml_id IS NOT NULL'
+.(!empty($cml['where_spr_noms'])?' AND '.$cml['where_spr_noms']:''));
 }
 
 $xml='<?xml version="1.0" encoding="UTF-8"?>

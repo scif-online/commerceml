@@ -44,6 +44,15 @@ $time_import=(!empty($last_sync_cml['import'])?$last_sync_cml['import']:0);
 $time_export=(!empty($last_sync_cml['export'])?$last_sync_cml['export']:0);
 $time_sync=max($time_import,$time_export);
 
+ // файл лога отсутствует, синхронизация еще не запускалась, выведем SQL для добавления полей
+ if (!empty($last_sync_cml['structure'])) {
+ echo '<div class="gap2"><div class="tips">Создайте поля в
+ <a href="'.WN_HOME.'admin/phpmyadmin/'.(!empty($wn_dbname)?'?db='.$wn_dbname:'').'" target="_blank">базе данных</a> (при необходимости, замените тип поля VARCHAR(36) на нужный,
+ если ваш магазин использует другой формат для идентификатора)</div>
+ <textarea class="width100" rows="5">'.$last_sync_cml['structure'].'</textarea>
+ </div>';
+ }
+
  // сообщение синхронизации
  if (!empty($last_sync_cml['message'])) {
  echo '<div class="alert alert-'.(empty($last_sync_cml['error'])?'success':'danger').'">
@@ -66,6 +75,10 @@ echo '<form id="formData" method="post" class="form-controls" enctype="multipart
  <div id="tabs-sync">
  <div class="margin tips">Синхронизировать данные СКИФ с интернет-магазином.
  Время последней синхронизации '.date('d.m.Y H:i',$time_sync)
+ .'</div>
+ <div class="margin">import - Классификатор (товары и группы) - '.(!empty($cml['exchange_params']['import'])?'ДА':'НЕТ').'<br>
+   offers - Пакет предложений (остатки и цены) - '.(!empty($cml['exchange_params']['offers'])?'ДА':'НЕТ').'<br>
+   Передавать только изменения - '.(!empty($cml['exchange_params']['only_changes'])?'ДА':'НЕТ')
  .'</div>
  <div style="margin-top:20px"><input type="submit" name="submit_sync" value="Синхронизировать" class="button"></div>
  </div>';

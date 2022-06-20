@@ -1,6 +1,13 @@
 <?php
 // Обмен данными с интернет-магазином по формату CommerceML
 
+// DEBUG если запускается из браузера, включаем режим отладки
+$debug=(!empty($_SERVER['REMOTE_ADDR'])?true:false);
+if ($debug) {
+ini_set('display_errors',1);
+ini_set('error_reporting', E_ALL); // E_STRICT
+}
+
 define('WEBNICE','CRON');
 define('WN_PATH',str_replace('cron','',dirname(__FILE__)));
 require WN_PATH.'includes/config.php';
@@ -18,3 +25,9 @@ $last_sync_cml=last_sync_cml(); // даты последней синхрони�
 $now=time();
 
 require CML_INCLUDE_FOLDER.'cml_sync.php';
+
+if ($debug) {
+echo '<pre>';
+print_r($last_sync_cml);
+echo '</pre>';
+}

@@ -33,6 +33,7 @@ http://<сайт>/<путь>/?type=catalog&mode=file&filename=<имя файла
  if (empty($cml['exchange_url'])) {
  die('Не задан адрес обмена $cml["exchange_url"]');
  }
+$cml['exchange_url'].=(strpos($cml['exchange_url'],'?')?'&':'?');
 
 $errors='';
 $cml_exchange_cookie=false;
@@ -41,31 +42,35 @@ $is_cml_sync=true; // укажем скрипту экспорта, что во�
 // запросы к сайту
 function cml_exchange_query($url,$method='GET',$content=false) {
 global $cml_exchange_cookie;
-$opts=array('http'=>array('method'=>$method,'header'=>"Cookie: ".$cml_exchange_cookie));
+$opts=array('http'=>array('method'=>$method,'header'=>$cml_exchange_cookie));
  if ($content) {
  $opts['http']['header'].="Content-Type: application/x-www-form-urlencoded\r\n";
  $opts['http']['content']=$content;
- //$opts['http']['content']=file_get_contents(WN_PATH.'cache/offers777.xml');
  }
 return file_get_contents($url,false,stream_context_create($opts));
 }
 
 // инициализация обмена данными с сайтом type=catalog или sale
 function cml_exchange_init($type='sale') {
-global $cml, $errors;
+global $cml, $errors, $cml_exchange_cookie;
  try {
  // Шаг 1. CMS должна вернуть три строки через разделитель \n: слово success; имя Cookie; значение Cookie.
- $url=$cml['exchange_url'].'?type='.$type.'&mode=checkauth';
- $page=file_get_contents($url);
+ $url=$cml['exchange_url'].'type='.$type.'&mode=checkauth';
+  if (!empty($cml['username']) AND !empty($cml['password'])) {
+  $page=file_get_contents($url,false,stream_context_create(array('http'=>array('header'=>'Authorization: Basic '.base64_encode($cml['username'].':'.$cml['password'])))));
+  } else {
+  $page=file_get_contents($url);
+  }
   if (!$page) { throw new Exception('Не получен ответ от сайта по адресу '.$url); }
  $arr_page=explode("\n",$page);
   if (empty($arr_page[0]) OR trim($arr_page[0])!='success' OR empty($arr_page[1]) OR empty($arr_page[2])) {
-  throw new Exception('От сайта на запрос '.$url.' не получен корректный ответ'.PHP_EOL.print_r($arr_page,true));
+  throw new Exception('От сайта на запрос '.$url.' не получен корректный ответ. Ожидается: success; имя Cookie; значение Cookie.
+  Получено: '.PHP_EOL.print_r($arr_page,true));
   }
  $cml_exchange_cookie="Cookie: ".trim($arr_page[1])."=".trim($arr_page[2])."\r\n";
  /* Запрос параметров от сайта
- $url=$cml['exchange_url'].'?type='.$type.'&mode=init';
- $page=file_get_contents($url,false,stream_context_create(array('http'=>array('method'=>"GET",'header'=>"Cookie: ".trim($arr_page[1])."=".trim($arr_page[2])."\r\n"))));
+ $url=$cml['exchange_url'].'type='.$type.'&mode=init';
+ $page=file_get_contents($url,false,stream_context_create(array('http'=>array('method'=>"GET",'header'=>$cml_exchange_cookie))));
   if (!$page) { throw new Exception('Не получены параметры обмена от сайта по адресу '.$url); }
  */
  return true;
@@ -76,56 +81,60 @@ global $cml, $errors;
 }
 
 // ====== Обмен данных о заказах (импортируем с сайта, передаем на сайт изменение статусов) =====
-$cml_docs=$cml_imported_docs=0;
-/*
+$cml_imported_docs=array();
+$cml_docs=0;
  if (cml_exchange_init('sale')) {
- $url=$cml['exchange_url'].'?type=sale&mode=query';
- $page=file_get_contents($url,false,$cml_context);
+ $url=$cml['exchange_url'].'type=sale&mode=query';
+ $page=cml_exchange_query($url,'GET');
+ // debug
+ file_put_contents(WN_PATH.'cache/cml_'.date('YmdHis').'.inc',$page);
   if ($page) {
   $obj=simplexml_load_string($page);
    if (!empty($obj->Документ)) {
    $cml_docs=count($obj->Документ);
    require CML_INCLUDE_FOLDER.'cml_import_orders.php';
    }
-  // отправляем сайту уведомление об успешном завершении
-  $url=$cml['exchange_url'].'?type=sale&mode=success';
-  $page=file_get_contents($url,false,$cml_context);
+   // если не было ошибок, отправляем сайту уведомление об успешном завершении
+   if (!$errors) {
+   $url=$cml['exchange_url'].'type=sale&mode=success';
+   $page=cml_exchange_query($url,'GET');
+   }
   // TODO отправка сайту файла обмена (информация об изменении статуса заказа)
-  // $url=$cml['exchange_url'].'?type=sale&mode=file&filename=<имя файла>';
+  // $url=$cml['exchange_url'].'type=sale&mode=file&filename=<имя файла>';
   $last_sync_cml['import']=$now;
   } else {
   $errors.='Не получен XML-файл по запросу '.$url.'<br>';
   }
  }
-*/
 
 // ===== Передаем на сайт номенклатуру import, остатки и цены offers =======
- if (cml_exchange_init('catalog')) {
- // что выгружаем:
- $params['import']=true; // Классификатор (товары и группы)
- $params['offers']=true; // Пакет предложений (остатки и цены)
- $params['only_changes']=true; // только изменения
- require CML_INCLUDE_FOLDER.'cml_export.php';
- $filename.='_'.date('dmyHis').'.xml';
- echo '<textarea style="width:100%">'.$xml.'</textarea>';
- $url=$cml['exchange_url'].'?type=catalog&mode=file&filename='.$filename;
- $page=cml_exchange_query($url,'POST',$xml);
-  if ($page AND mb_substr(trim($page),0,7)=='success') {
-  /*
-  $limit=10;
-  $page='progress';
-  $url=$cml['exchange_url'].'?type=catalog&mode=import&filename='.$filename;
-   while (mb_substr(trim($page),0,8)=='progress') {
-   $page=cml_exchange_query($url);
-   echo '<div>'.date('H:i:s').': '.iconv('windows-1251','utf-8',$page).'</div>';
-   sleep(1);
-   $limit--;
-    if (!$limit) {
-    break;
-    }
+$params=$cml['exchange_params']; // что выгружаем (здесь из настроек массива, в интерфейсе из формы)
+ if (!empty($params['import']) OR !empty($params['offers'])) { // Классификатор или Предложения
+  if (cml_exchange_init('catalog')) {
+  require CML_INCLUDE_FOLDER.'cml_export.php';
+  $filename.='_'.date('dmyHis').'.xml';
+   if (!empty($debug)) {
+   echo '<textarea style="width:100%">'.$xml.'</textarea>';
    }
-  */
-  $last_sync_cml['export']=$now;
+  $url=$cml['exchange_url'].'type=catalog&mode=file&filename='.$filename;
+  $page=cml_exchange_query($url,'POST',$xml);
+   if ($page AND mb_substr(trim($page),0,7)=='success') {
+   // файл успешно сохранен на сайте, отправляем команды его обработать
+   $limit=10;
+   $page='progress';
+   $url=$cml['exchange_url'].'type=catalog&mode=import&filename='.$filename;
+    while (mb_substr(trim($page),0,8)=='progress') {
+    $page=cml_exchange_query($url);
+    //echo '<div>'.date('H:i:s').': '.iconv('windows-1251','utf-8',$page).'</div>';
+    // echo $page; Возвращает Complete. Imported elements: 1
+    sleep(1);
+    $limit--;
+     if (!$limit) {
+     break;
+     }
+    }
+   $last_sync_cml['export']=$now;
+   }
   }
  }
 
@@ -134,6 +143,8 @@ $cml_docs=$cml_imported_docs=0;
  $last_sync_cml['message']='Ошибки: '.$errors;
  } else { // без ошибок
  $last_sync_cml['error']=0;
- $last_sync_cml['message']='Заказов в файле: '.$cml_docs.'. Импортировано: '.$cml_imported_docs;
+ $last_sync_cml['message']='Заказов в файле: '.$cml_docs.'. Импортировано: '.count($cml_imported_docs);
  }
 last_sync_cml($last_sync_cml);
+
+cml_sync_after();

@@ -42,7 +42,8 @@ $is_cml_sync=true; // укажем скрипту экспорта, что во�
 // запросы к сайту
 function cml_exchange_query($url,$method='GET',$content=false) {
 global $cml_exchange_cookie;
-$opts=array('http'=>array('method'=>$method,'header'=>$cml_exchange_cookie));
+// таймаут по умолчанию 60 сек, увеличим вдвое
+$opts=array('http'=>array('method'=>$method,'header'=>$cml_exchange_cookie,'timeout'=>120));
  if ($content) {
  $opts['http']['header'].="Content-Type: application/x-www-form-urlencoded\r\n";
  $opts['http']['content']=$content;
@@ -57,7 +58,9 @@ global $cml, $errors, $cml_exchange_cookie;
  // Шаг 1. CMS должна вернуть три строки через разделитель \n: слово success; имя Cookie; значение Cookie.
  $url=$cml['exchange_url'].'type='.$type.'&mode=checkauth';
   if (!empty($cml['username']) AND !empty($cml['password'])) {
-  $page=file_get_contents($url,false,stream_context_create(array('http'=>array('header'=>'Authorization: Basic '.base64_encode($cml['username'].':'.$cml['password'])))));
+  $page=file_get_contents($url,false,stream_context_create(array('http'=>array(
+  'header'=>'Authorization: Basic '.base64_encode($cml['username'].':'.$cml['password']),
+  'timeout'=>120))));
   } else {
   $page=file_get_contents($url);
   }
@@ -86,9 +89,9 @@ $cml_docs=0;
  if (cml_exchange_init('sale')) {
  $url=$cml['exchange_url'].'type=sale&mode=query';
  $page=cml_exchange_query($url,'GET');
- // debug
- file_put_contents(WN_PATH.'cache/cml_'.date('YmdHis').'.inc',$page);
   if ($page) {
+  // debug
+  file_put_contents(WN_PATH.'cache/cml_'.date('YmdHis').'.inc',$page);    
   $obj=simplexml_load_string($page);
    if (!empty($obj->Документ)) {
    $cml_docs=count($obj->Документ);
@@ -103,7 +106,7 @@ $cml_docs=0;
   // $url=$cml['exchange_url'].'type=sale&mode=file&filename=<имя файла>';
   $last_sync_cml['import']=$now;
   } else {
-  $errors.='Не получен XML-файл по запросу '.$url.'<br>';
+  $errors.='Не получен XML-файл по запросу '.$url.PHP_EOL;
   }
  }
 

@@ -4,7 +4,7 @@ defined('CML_INCLUDE_FOLDER') or die('Access denied');
 
 $filename='';
 $xml='';
-$only_changes=((!empty($params['only_changes']) AND !empty($time_last_cml['export']))?$time_last_cml['export']:false);
+$only_changes=((!empty($params['only_changes']) AND !empty($last_sync_cml['export']))?$last_sync_cml['export']:false);
 if (!empty($params['import'])) { // Классификатор
  // заполним cml_id в справочниках. Цены не заполняем, нужно вручную проставить cml_id выгружаемым типам цен, взяв их ID из выгрузки магазина
  if (!empty($cml['export_new_spr'])) {
@@ -38,22 +38,24 @@ $xml.='
  </Владелец>
  <Группы>';
 // дерево групп
-$tree=new Tree(SCIF_BASE.'_spr_noms_gr');
+$tree=new Tree(SCIF_BASE.'_spr_noms_gr','cml_id');
 function my_view_tree($parent) {
 global $tree;
 $div='';
  foreach ($tree->tree_parent[$parent] AS $key=>$items) {
- $div.='
- <Группа>
-  <Ид>'.$items['id'].'</Ид>
-  <Наименование>'.$items['name'].'</Наименование>'
-  .($parent?PHP_EOL.'<Родитель>'.$parent.'</Родитель>':'');
-  if (isset($tree->tree_parent[$items['id']])) {
-  $div.=PHP_EOL.'<Группы>';
-  $div.=my_view_tree($items['id']);
-  $div.=PHP_EOL.'</Группы>';
+  if ($items['cml_id']) {
+  $div.='
+  <Группа>
+   <Ид>'.$items['cml_id'].'</Ид>
+   <Наименование>'.$items['name'].'</Наименование>'
+   .($parent?PHP_EOL.'<Родитель>'.$parent.'</Родитель>':'');
+   if (isset($tree->tree_parent[$items['id']])) {
+   $div.=PHP_EOL.'<Группы>';
+   $div.=my_view_tree($items['id']);
+   $div.=PHP_EOL.'</Группы>';
+   }
+  $div.=PHP_EOL.'</Группа>';
   }
- $div.=PHP_EOL.'</Группа>';
  }
 return $div;
 }
